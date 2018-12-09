@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,34 +20,39 @@ public class ImageRepositoryImpl implements ImageRepository {
 	private static final String ISO_NAME = "debian-9-5-0";
 	private static final String ISO_FILE = "C:/users/tjrag/desktop/debian-9.5.0-amd64-netinst.iso";
 
-	private final List<String> imageNames = new ArrayList<>();
-	private final Map<String, Iso9660FileSystem> images = new ConcurrentHashMap<>();
-	private final Map<String, Long> imageSizes = new ConcurrentHashMap<>();
-	private final Map<String, Map<String, Iso9660FileEntry>> tableOfContents = new ConcurrentHashMap<>();
+	private final List<Image> images = new ArrayList<>();
+	
+	private final Map<Long,   Image> idToImageMap   = new ConcurrentHashMap<>();
+	private final Map<String, Image> nameToImageMap = new ConcurrentHashMap<>();
+	
+	private final Map<String, Iso9660FileSystem>             imagesIsoFsMap      = new ConcurrentHashMap<>();
+	private final Map<String, Map<String, Iso9660FileEntry>> imagesToIsoContents = new ConcurrentHashMap<>();
 
-	private final Map<Long, String> idToImageName = new ConcurrentHashMap<>();
-	private final Map<String, Long> imageNameToId = new ConcurrentHashMap<>();
 	private final Map<String, Map<String, Long>> imageFilenameToId = new ConcurrentHashMap<>();
 	private final Map<String, Map<Long, String>> imageIdToFilename = new ConcurrentHashMap<>();
 	
 	public ImageRepositoryImpl() throws IOException {
+
+		long imageId = 1L << 24;
+		
+		Image debian950 = new Image();
+		debian950.setName( "debian-9-5-0" );
+		debian950.setDescription( "Debian Stretch 9.5.0 ISO" );
+		debian950.setId( imageId );
+		
+		images.add( debian950 );
+		idToImageMap.put( debian950.getId(), debian950 );
+		nameToImageMap.put( debian950.getName(), debian950 );
+		
 		File isoFile = new File( ISO_FILE );
 		Iso9660FileSystem isoFs = new Iso9660FileSystem( isoFile, true );
-		
-		imageNames.add( ISO_FILE );
-		images.put( ISO_NAME, isoFs );
-		imageSizes.put( ISO_NAME, isoFile.length() );
+		imagesIsoFsMap.put( ISO_NAME, isoFs );
 
 		Map<String, Long> filenameToId    = new ConcurrentHashMap<>();
 		Map<Long, String> idToFilename    = new ConcurrentHashMap<>();
 		Map<String, Iso9660FileEntry> toc = new ConcurrentHashMap<>();
 		
-		tableOfContents.put( ISO_NAME, toc );
-		
-		long imageId = 1L << 24;
-
-		idToImageName.put( imageId, ISO_NAME );
-		imageNameToId.put( ISO_NAME, imageId );
+		imagesToIsoContents.put( ISO_NAME, toc );
 		
 		this.imageFilenameToId.put( ISO_NAME, filenameToId );
 		this.imageIdToFilename.put( ISO_NAME, idToFilename );
@@ -55,19 +60,36 @@ public class ImageRepositoryImpl implements ImageRepository {
 		AtomicLong i = new AtomicLong( 0 );
 		isoFs.forEach( e -> {
 			String path = e.getPath();
+			
 			if( path.endsWith( "/" ) ) {
 				path = path.substring( 0, path.length()-1 );
 			}
+			
 			toc.put( path, e );
 			
 			long fileId = i.incrementAndGet() | imageId;
 			System.out.println( path + " ::: " + String.format( "%016x", fileId ) );
 			
-			filenameToId.put( path, fileId );
-			idToFilename.put( fileId, path );
+			filenameToId.put( path,   fileId );
+			idToFilename.put( fileId, path   );
 		});
 	}
-
+	
+	@Override
+	public List<Image> getAllImages() {
+		return Collections.unmodifiableList( this.images );
+	}
+	
+	@Override
+	public Image getImage( long id ) {
+		return this.idToImageMap.get( id );
+	}
+	
+	@Override
+	public Image getImage( String name ) {
+		return this.nameToImageMap.get( name );
+	}
+	
 	@Override
 	public long filePathToId( String imageName, String filePath ) throws IOException {
 		if( !imageFilePathExists( imageName, filePath ) ) {
@@ -80,56 +102,22 @@ public class ImageRepositoryImpl implements ImageRepository {
 	@Override
 	public String idToFilePath( long id ) throws IOException {
 		long imgId  = (id >> 24 ) << 24;
-		String imageName = this.idToImageName.get( imgId );
+		Image image = this.idToImageMap.get( imgId );
 		
-		return this.imageIdToFilename.get( imageName ).get( id );
-	}
-	
-	@Override
-	public List<String> getImageNames() {
-		return Arrays.asList( ISO_NAME );
+		return this.imageIdToFilename.get( image.getName() ).get( id );
 	}
 
-	@Override
 	public boolean imageExists( String imageName ) {
-		return this.images.containsKey( imageName );
+		return this.nameToImageMap.containsKey( imageName );
 	}
 	
-	@Override
-	public String idToImageName( long id ) throws IOException {
-		return this.idToImageName.get( id );
-	}
-	
-	@Override
-	public long imageNameToId( String imageName ) throws IOException {
-		return this.imageNameToId.get( imageName );
-	}
-
-	@Override
-	public long getImageSize( String imageName ) throws IOException {
-		if( !imageExists( imageName ) ) {
-			throw new IOException( "Unknown image " + imageName );
-		}
-		
-		return this.imageSizes.get( imageName );
-	}
-	
-	@Override
-	public int getImageFileCount(String imageName) throws IOException {
-		if( !imageExists( imageName ) ) {
-			throw new IOException( "Unknown image " + imageName );
-		}
-		
-		return this.tableOfContents.get( imageName ).size();
-	}
-
 	@Override
 	public boolean imageFilePathExists( String imageName, String filePath ) throws IOException {
 		if( !imageExists( imageName ) ) {
 			throw new IOException( "Unknown image " + imageName );
 		}
 		
-		return this.tableOfContents.get( imageName ).containsKey( filePath );
+		return this.imagesToIsoContents.get( imageName ).containsKey( filePath );
 	}
 	
 	@Override
@@ -138,7 +126,7 @@ public class ImageRepositoryImpl implements ImageRepository {
 			throw new IOException( "File " + filePath + " not found in image " + imageName );
 		}
 		
-		return this.tableOfContents.get( imageName ).get( filePath );
+		return this.imagesToIsoContents.get( imageName ).get( filePath );
 	}
 
 	@Override
@@ -148,7 +136,7 @@ public class ImageRepositoryImpl implements ImageRepository {
 		}
 		
 		
-		return (int) tableOfContents.get( imageName ).get( filePath ).getSize();
+		return (int) imagesToIsoContents.get( imageName ).get( filePath ).getSize();
 	}
 
 	@Override
@@ -157,8 +145,8 @@ public class ImageRepositoryImpl implements ImageRepository {
 			throw new IOException( "File " + filePath + " not found in image " + imageName );
 		}
 		
-		Iso9660FileEntry entry = this.tableOfContents.get( imageName ).get( filePath );
-		Iso9660FileSystem fs = this.images.get( imageName );
+		Iso9660FileEntry entry = this.imagesToIsoContents.get( imageName ).get( filePath );
+		Iso9660FileSystem fs = this.imagesIsoFsMap.get( imageName );
 		
 		try( InputStream is = fs.getInputStream( entry ) ) {
 			is.skip( offset );
@@ -168,7 +156,7 @@ public class ImageRepositoryImpl implements ImageRepository {
 	
 	@Override
 	public void destroy() throws IOException {
-		this.images.values().stream().forEach( fs -> {
+		this.imagesIsoFsMap.values().stream().forEach( fs -> {
 			try {
 				fs.close();
 			}
@@ -180,7 +168,7 @@ public class ImageRepositoryImpl implements ImageRepository {
 
 	@Override
 	public List<String> listImagePath( String imageName, String filePath ) throws IOException {
-		 Set<String> paths = this.tableOfContents.get( imageName ).keySet();
+		 Set<String> paths = this.imagesToIsoContents.get( imageName ).keySet();
 		 List<String> result = paths.stream().collect( Collectors.toList() );
 		 
 		return result

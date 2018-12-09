@@ -7,20 +7,16 @@ import com.github.stephenc.javaisotools.loopfs.iso9660.Iso9660FileEntry;
 
 public interface ImageRepository {
 
-	List<String> getImageNames();
-	boolean imageExists( String imageName );
-	
-	long getImageSize( String imageName ) throws IOException;
-	int getImageFileCount( String imageName ) throws IOException;
+	List<Image> getAllImages();
+	Image getImage( String name );
+	Image getImage( long id );
+
 	int getImageFileSize( String imageName, String filePath ) throws IOException;
 	
 	boolean imageFilePathExists( String imageName, String filePath ) throws IOException;
 	
 	Iso9660FileEntry getFileEntry( String imageName, String filePath ) throws IOException;
 
-	String idToImageName( long id ) throws IOException;
-	long imageNameToId( String imageName ) throws IOException;
-	
 	long filePathToId( String imageName, String filePath ) throws IOException;
 	String idToFilePath( long id ) throws IOException;
 

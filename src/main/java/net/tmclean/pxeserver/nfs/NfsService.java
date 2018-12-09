@@ -16,6 +16,7 @@ import org.dcache.oncrpc4j.rpc.OncRpcProgram;
 import org.dcache.oncrpc4j.rpc.OncRpcSvc;
 import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
 
+import net.tmclean.pxeserver.iso.Image;
 import net.tmclean.pxeserver.iso.ImageRepository;
 
 public class NfsService implements Callable<Void> {
@@ -33,8 +34,8 @@ public class NfsService implements Callable<Void> {
 		StringBuffer exportStr = new StringBuffer();
 		exportStr.append( "/ 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
 		
-		for( String image : this.imageRepository.getImageNames() ) {
-			exportStr.append( "/" + image + " 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
+		for( Image image : this.imageRepository.getAllImages() ) {
+			exportStr.append( "/" + image.getName() + " 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
 		}
 		
 		ExportFile exportFile = new ExportFile( new StringReader( exportStr.toString() ) );

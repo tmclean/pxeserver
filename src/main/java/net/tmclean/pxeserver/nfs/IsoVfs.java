@@ -21,6 +21,7 @@ import org.dcache.nfs.vfs.Stat.Type;
 import com.github.stephenc.javaisotools.loopfs.iso9660.Iso9660FileEntry;
 import com.google.common.primitives.Longs;
 
+import net.tmclean.pxeserver.iso.Image;
 import net.tmclean.pxeserver.iso.ImageRepository;
 
 public class IsoVfs implements VirtualFileSystem {
@@ -42,7 +43,7 @@ public class IsoVfs implements VirtualFileSystem {
 
 	@Override
 	public Inode lookup( Inode parent, String path ) throws IOException {
-		System.out.println( "Lookking up path " + path );
+		System.out.println( "Looking up path " + path );
         
 		long   parentInode = getInodeNumber( parent );
         String parentPath  = resolveInode( parentInode );
@@ -64,9 +65,9 @@ public class IsoVfs implements VirtualFileSystem {
         System.out.println( "Listing dir children for inode " + String.format( "%016x", inodeNumber ) );
         
         if( inodeNumber == ROOT_INODE ) {    
-        	for( String imageName : this.imageRepository.getImageNames() ) {
+        	for( Image image : this.imageRepository.getAllImages() ) {
     			if( cookie++ > l ) {
-    		        list.add( imageNameToDirEntry( imageName, inodeNumber, cookie ) );
+    		        list.add( imageNameToDirEntry( image.getName(), inodeNumber, cookie ) );
     			}
         	}
         }
@@ -255,16 +256,35 @@ public class IsoVfs implements VirtualFileSystem {
     		return "";
     	}
     	else if( this.imageRepository.isImageRootId( inodeNumber ) ) {
-    		return this.imageRepository.idToImageName( inodeNumber );
+    		return getImage( inodeNumber ).getName();
     	}
     	else {
     		long imageId = this.imageRepository.imageFileIdToImageId( inodeNumber );
+    		Image image = getImage( imageId );
     		
-	    	String imageName = this.imageRepository.idToImageName( imageId );
+	    	String imageName = image.getName();
 	    	String filePath  = this.imageRepository.idToFilePath( inodeNumber );
     	
 	    	return imageName + "/" + filePath;
     	}
+    }
+    
+    private Image getImage( long id ) throws NoEntException {
+		Image image = imageRepository.getImage( id );
+		if( image != null ) {
+			return image;
+		}
+
+		throw new NoEntException( "Failed to locate image with ID " + id );
+    }
+    
+    private Image getImage( String name ) throws NoEntException {
+		Image image = imageRepository.getImage( name );
+		if( image != null ) {
+			return image;
+		}
+
+		throw new NoEntException( "Failed to locate image with name " + name );
     }
     
     private long resolvePath( String path ) throws IOException {
@@ -276,7 +296,7 @@ public class IsoVfs implements VirtualFileSystem {
 	    		return ROOT_INODE;
 	    	}
 	    	else if( !path.contains( "/" ) ) {
-	    		return imageRepository.imageNameToId( path );
+	    		return getImage( path ).getId();
 	    	}
 	    	else {
 				String imageName = path.substring( 0, path.indexOf( '/' ) );
@@ -292,7 +312,8 @@ public class IsoVfs implements VirtualFileSystem {
 
 
 	private DirectoryEntry imageNameToDirEntry( String imageName, long inodeNumber, long n ) throws IOException {
-		long ino = this.imageRepository.imageNameToId( imageName );
+		Image image = getImage( imageName );
+		long ino = image.getId();
 		
 		long time = System.currentTimeMillis();
 		
