@@ -24,6 +24,8 @@ import com.google.common.primitives.Longs;
 import net.tmclean.pxeserver.iso.ImageRepository;
 
 public class IsoVfs implements VirtualFileSystem {
+
+	private static final long ROOT_INODE = 1L;
 	
     private final NfsIdMapping _idMapper = new SimpleIdMap();
 
@@ -35,44 +37,22 @@ public class IsoVfs implements VirtualFileSystem {
 
 	@Override
 	public FsStat getFsStat() throws IOException {
-		int fileCount = -1;
-		int isoFileSize = -1;
-		return new FsStat( isoFileSize, fileCount, isoFileSize, fileCount );
+		return new FsStat( 0, -1, 0, -1 );
 	}
 
 	@Override
 	public Inode lookup( Inode parent, String path ) throws IOException {
 		System.out.println( "Lookking up path " + path );
-        long parentInodeNumber = getInodeNumber( parent );
-        String parentName = resolveInode( parentInodeNumber ); 
-        String child =  parentName.isEmpty() ? path : parentName + "/" + path;
-        long childInodeNumber = resolvePath( child );
-        return toFh( childInodeNumber );
-	}
-	
-	private DirectoryEntry imageNameToDirEntry( String imageName, long inodeNumber, long n ) throws IOException {
-		long ino = this.imageRepository.imageNameToId( imageName );
-		
-		long time = System.currentTimeMillis();
-		
-        Stat stat = new Stat();
-        stat.setMode( Stat.S_IFDIR | 0777 );
-        stat.setATime( time );
-        stat.setCTime( time );
-        stat.setMTime( time );
-        stat.setSize( 0 );	
-        stat.setGeneration( time );
-        stat.setGid( 0 );
-        stat.setUid( 0 );
-        stat.setNlink( 1 );
-        stat.setDev( 17 );
-        stat.setIno( (int) inodeNumber );
-        stat.setRdev( 17 );
-        stat.setFileid( (int) inodeNumber );
         
-        return new DirectoryEntry( imageName, toFh(ino), stat, n ) ;
+		long   parentInode = getInodeNumber( parent );
+        String parentPath  = resolveInode( parentInode );
+        
+        String childPath   = parentPath.isEmpty() ? path : parentPath + "/" + path;
+        long   childInode  = resolvePath( childPath );
+        
+        return toFh( childInode );
 	}
-	
+		
 	@Override
 	public DirectoryStream list( Inode inode, byte[] verifier, long l ) throws IOException {
 
@@ -83,65 +63,33 @@ public class IsoVfs implements VirtualFileSystem {
         
         System.out.println( "Listing dir children for inode " + String.format( "%016x", inodeNumber ) );
         
-        if( inodeNumber == 1L ) {    
+        if( inodeNumber == ROOT_INODE ) {    
         	for( String imageName : this.imageRepository.getImageNames() ) {
-    			cookie++;
-    			if( cookie > l ) {
+    			if( cookie++ > l ) {
     		        list.add( imageNameToDirEntry( imageName, inodeNumber, cookie ) );
     			}
         	}
         }
-    	else if( isImageRootInode( inodeNumber ) ) {
-            String imageName = resolveInode( inodeNumber );
-            System.out.println( "Getting root for image named " + imageName );
-        	
-            for( String p : this.imageRepository.listImagePath( imageName, "" ) ) {
-        		if( !p.contains( "/" ) && !p.isEmpty() ) {
-        			cookie++;
-        			if( cookie > l ) {
-        				String fullPath = imageName + "/" + p;
-    					long ino = resolvePath( fullPath );
-    	            
-    		            String[] segs = p.split( "/" );
-    		            String name = segs[ segs.length - 1 ];
-    		            
-    		            Stat pStat = statPath( fullPath, ino );
-    		            
-    		            System.out.println( "Adding list path " + fullPath );
-    		            System.out.println( "   Inode     " + String.format( "%16x", ino ) );
-    		            System.out.println( "   Name      " + name );
-    		            System.out.println( "   StatInode " + pStat.getFileId() );
-    		            
-    		            list.add( new DirectoryEntry( name, toFh(ino), pStat, cookie ) );
-        			}
-        		}
-            }
-    	}
         else {
-            String path = resolveInode( inodeNumber );
-
-    		String imageName = path.substring( 0, path.indexOf( '/' ) );
-    		String filePath  = path.substring( path.indexOf( "/" ) + 1 );
+        	String imageName = "";
+        	String filePath  = "";
+        	String resolvedPath = resolveInode( inodeNumber );
+        	
+        	if( this.imageRepository.isImageRootId( inodeNumber ) ) {
+        		imageName = resolvedPath;
+                System.out.println( "Getting root for image named " + imageName );
+        	}
+        	else {
+        		imageName = resolvedPath.substring( 0, resolvedPath.indexOf( '/' ) );
+        		filePath  = resolvedPath.substring( resolvedPath.indexOf( "/" ) + 1 );
+        	}
 
             System.out.println( "Getting path " + filePath + " for image named " + imageName );
             
             for( String p : this.imageRepository.listImagePath( imageName, filePath ) ) {
     			cookie++;
     			if( cookie > l ) {
-    				String fullPath = imageName + "/" + p;
-					long ino = resolvePath( fullPath );
-	            
-		            String[] segs = p.split( "/" );
-		            String name = segs[ segs.length - 1 ];
-		            
-		            Stat pStat = statPath( fullPath, ino );
-
-		            System.out.println( "Adding list path " + fullPath );
-		            System.out.println( "   Inode     " + String.format( "%16x", ino ) );
-		            System.out.println( "   Name      " + name );
-		            System.out.println( "   StatInode " + pStat.getFileId() );
-		            
-		            list.add( new DirectoryEntry( name, toFh(ino), pStat, cookie ) );
+    		        list.add( imagePathToDirEntry( imageName + "/" + p, inodeNumber, cookie ) );
     			}
             }
         }
@@ -157,10 +105,10 @@ public class IsoVfs implements VirtualFileSystem {
             throw new NoEntException("no parent"); //its the root
         }
         
-        String path = resolveInode( inodeNumber );
-        String parentPath = getParent( path );
-        long parentInodeNumber = resolvePath( parentPath );
-        return toFh( parentInodeNumber );
+        String path        = resolveInode( inodeNumber );
+        String parentPath  = getParent( path );
+        long   parentInode = resolvePath( parentPath );
+        return toFh( parentInode );
 	}
 	
 	private String getParent( String path ) {
@@ -173,25 +121,25 @@ public class IsoVfs implements VirtualFileSystem {
 
 	@Override
 	public int read( Inode inode, byte[] data, long offset, int count ) throws IOException {
-        long inodeNumber = getInodeNumber( inode );
-        String path = resolveInode( inodeNumber );
-
-		String imageName   = path.substring( 0, path.indexOf( '/' ) );
-		String filePath    = path.substring( path.indexOf( "/" )+1 );
+        long inodeNo = getInodeNumber( inode );
+        
+        String path      = resolveInode( inodeNo );
+		String imageName = path.substring( 0, path.indexOf( '/' ) );
+		String filePath  = path.substring( path.indexOf( "/" )+1 );
     	
         return this.imageRepository.readImageFile( imageName, filePath, data, offset, count );
 	}
 
 	@Override
 	public Stat getattr( Inode inode ) throws IOException {
-		long inodeNumber = getInodeNumber( inode );
-		String path = resolveInode( inodeNumber );
-		return statPath( path, inodeNumber );
+		long inodeNo = getInodeNumber( inode );
+		String path = resolveInode( inodeNo );
+		return statPath( path, inodeNo );
 	}
 
 	@Override
 	public Inode getRootInode() throws IOException {
-		return toFh( 1L );
+		return toFh( ROOT_INODE );
 	}
 
 	@Override
@@ -257,12 +205,15 @@ public class IsoVfs implements VirtualFileSystem {
         
         System.out.println( "Stating path " + path + " with inode " + String.format( "%016x", inodeNumber ) );
         
-    	if( inodeNumber == 1L || 
-    		path == null || path.trim().isEmpty() || 
-    		"/".equals( path.trim() ) ||  
-    		!path.contains( "/" ) ) {
-    		
-            stat.setMode( Stat.S_IFDIR | 0777 );
+    	if( inodeNumber == ROOT_INODE ||				// Matches root inode constant 
+    		path == null || path.trim().isEmpty() || 	// Is null or empty, implying root
+    		"/".equals( path.trim() ) ||  				// Is explicitly the root path
+    		!path.contains( "/" ) 						// The path contains no separators, implying the root of an images
+    	) {
+    		//
+    		// This path or inode is a virtual/bogus directory
+    		//
+            stat.setMode( Stat.S_IFDIR | 0707 );
             stat.setATime( 0L );
             stat.setCTime( 0L );
             stat.setMTime( 0L );
@@ -277,7 +228,7 @@ public class IsoVfs implements VirtualFileSystem {
             
             int type = isoEntry.isDirectory() ? Stat.S_IFDIR : Stat.S_IFREG;
             
-            stat.setMode( type | 0777 );
+            stat.setMode( type | 0707 );
             stat.setATime( isoEntry.getLastModifiedTime() );
             stat.setCTime( isoEntry.getLastModifiedTime() );
             stat.setMTime( isoEntry.getLastModifiedTime() );
@@ -300,28 +251,20 @@ public class IsoVfs implements VirtualFileSystem {
     	
     	System.out.println( "Resolving inode " + String.format( "%016x", inodeNumber ) );
     	
-    	if( inodeNumber == 1L ) {
+    	if( inodeNumber == ROOT_INODE ) {
     		return "";
     	}
-    	else if( isImageRootInode( inodeNumber ) ) {
+    	else if( this.imageRepository.isImageRootId( inodeNumber ) ) {
     		return this.imageRepository.idToImageName( inodeNumber );
     	}
     	else {
-    		long imageId = inodeToImageId( inodeNumber );
+    		long imageId = this.imageRepository.imageFileIdToImageId( inodeNumber );
     		
 	    	String imageName = this.imageRepository.idToImageName( imageId );
-	    	String filePath = this.imageRepository.idToFilePath( inodeNumber );
+	    	String filePath  = this.imageRepository.idToFilePath( inodeNumber );
     	
 	    	return imageName + "/" + filePath;
     	}
-    }
-    
-    private boolean isImageRootInode( long inodeNumber ) {
-    	return (inodeNumber & 0x00ffffffL) == 0;
-    }
-
-    private long inodeToImageId( long inode ) {
-    	return inode & 0xff000000L;
     }
     
     private long resolvePath( String path ) throws IOException {
@@ -330,7 +273,7 @@ public class IsoVfs implements VirtualFileSystem {
 
 		try {	
 	    	if( "".equals( path ) || "/".equals( path ) ) {
-	    		return 1L;
+	    		return ROOT_INODE;
 	    	}
 	    	else if( !path.contains( "/" ) ) {
 	    		return imageRepository.imageNameToId( path );
@@ -338,6 +281,7 @@ public class IsoVfs implements VirtualFileSystem {
 	    	else {
 				String imageName = path.substring( 0, path.indexOf( '/' ) );
 				String filePath  = path.substring( path.indexOf( "/" )+1 );
+				
 				return this.imageRepository.filePathToId( imageName, filePath );
 	    	}
     	}
@@ -345,7 +289,47 @@ public class IsoVfs implements VirtualFileSystem {
 			throw new NoEntException( "Failed to resolve path " + path );
 		}
     }
+
+
+	private DirectoryEntry imageNameToDirEntry( String imageName, long inodeNumber, long n ) throws IOException {
+		long ino = this.imageRepository.imageNameToId( imageName );
+		
+		long time = System.currentTimeMillis();
+		
+        Stat stat = new Stat();
+        stat.setMode( Stat.S_IFDIR | 0777 );
+        stat.setATime( time );
+        stat.setCTime( time );
+        stat.setMTime( time );
+        stat.setSize( 0 );	
+        stat.setGeneration( time );
+        stat.setGid( 0 );
+        stat.setUid( 0 );
+        stat.setNlink( 1 );
+        stat.setDev( 17 );
+        stat.setIno( (int) inodeNumber );
+        stat.setRdev( 17 );
+        stat.setFileid( (int) inodeNumber );
+        
+        return new DirectoryEntry( imageName, toFh( ino ), stat, n ) ;
+	}
 	
+	private DirectoryEntry imagePathToDirEntry( String path, long inodeNumber, long n ) throws IOException {
+		long ino = resolvePath( path );
+        
+        String[] segs = path.split( "/" );
+        String name = segs[ segs.length - 1 ];
+        
+        Stat pStat = statPath( path, ino );
+
+        System.out.println( "Adding list path " + path );
+        System.out.println( "   Inode     " + String.format( "%16x", ino ) );
+        System.out.println( "   Name      " + name );
+        System.out.println( "   StatInode " + pStat.getFileId() );
+        
+        return new DirectoryEntry( name, toFh(ino), pStat, n );
+	}
+    
 	private Inode toFh( long inodeNumber ) {
         return Inode.forFile( Longs.toByteArray( inodeNumber ) );
     }

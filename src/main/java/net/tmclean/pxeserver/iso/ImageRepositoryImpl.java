@@ -189,16 +189,26 @@ public class ImageRepositoryImpl implements ImageRepository {
 			.collect( Collectors.toList() );
 	}
 	
+	@Override
+	public boolean isImageRootId( long id ) throws IOException {
+    	return (id & 0x00ffffffL) == 0;
+	}
+	
+	@Override
+	public long imageFileIdToImageId(long id) throws IOException {
+    	return id & 0xff000000L;
+    }
+	
 	private boolean matchesPrefix( String actualPath, String prefix ) {
 		if( prefix != null && "/".equals( prefix ) ) {
 			prefix = "";
 		}
 		
 		if( prefix == null || "".equals( prefix.trim() ) ) {
-			return !actualPath.trim().isEmpty();
+			return !actualPath.trim().isEmpty() && !actualPath.contains( "/" );
 		}
-		else if( !actualPath.replace( prefix + "/", "" ).contains( "/" ) ) {
-			return !actualPath.equals( prefix ) && actualPath.trim().startsWith( prefix.trim() );
+		else if( !actualPath.equals( prefix ) && actualPath.indexOf( '/', prefix.length() + 1 ) < 0 ) {
+			return  actualPath.trim().startsWith( prefix.trim() );
 		}
 		
 		return false;

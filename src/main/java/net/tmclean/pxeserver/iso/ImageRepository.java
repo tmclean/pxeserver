@@ -24,6 +24,9 @@ public interface ImageRepository {
 	long filePathToId( String imageName, String filePath ) throws IOException;
 	String idToFilePath( long id ) throws IOException;
 
+	boolean isImageRootId( long id ) throws IOException;
+	long imageFileIdToImageId( long id ) throws IOException;
+	
 	List<String> listImagePath( String imageName, String filePath ) throws IOException;
 	
 	default int readImageFile( String imageName, String filePath, byte[] data ) throws IOException {
