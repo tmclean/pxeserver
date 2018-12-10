@@ -16,20 +16,23 @@ import org.dcache.oncrpc4j.rpc.OncRpcProgram;
 import org.dcache.oncrpc4j.rpc.OncRpcSvc;
 import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
 
-import net.tmclean.pxeserver.iso.Image;
-import net.tmclean.pxeserver.iso.ImageRepository;
+import net.tmclean.pxeserver.image.Image;
+import net.tmclean.pxeserver.image.ImageContentRepository;
+import net.tmclean.pxeserver.image.ImageRepository;
 
 public class NfsService implements Callable<Void> {
 
     private final ImageRepository imageRepository;
+    private final ImageContentRepository imageContentRepository;
     
-	public NfsService( ImageRepository imageRepository ) {
+	public NfsService( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
     	this.imageRepository = imageRepository;
+    	this.imageContentRepository = imageContentRepository;
 	}
 	
 	@Override
 	public Void call() throws IOException {
-		IsoVfs vfs = new IsoVfs( this.imageRepository );
+		IsoVfs vfs = new IsoVfs( this.imageRepository, this.imageContentRepository );
 
 		StringBuffer exportStr = new StringBuffer();
 		exportStr.append( "/ 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );

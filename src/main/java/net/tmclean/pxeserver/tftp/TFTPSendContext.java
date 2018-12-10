@@ -7,31 +7,32 @@ import org.apache.commons.net.tftp.TFTP;
 import org.apache.commons.net.tftp.TFTPDataPacket;
 import org.apache.commons.net.tftp.TFTPPacket;
 
-import net.tmclean.pxeserver.iso.ImageRepository;
+import net.tmclean.pxeserver.image.Image;
+import net.tmclean.pxeserver.image.ImageContentRepository;
 
 public class TFTPSendContext {
 	
 	private final InetAddress address;
 	private final int port;
 	
-	private final ImageRepository imageRepository;
-	private final String imageName;
+	private final ImageContentRepository imageContentRepository;
+	private final Image image;
 	private final String filePath;
 
 	private int block = 0;
 	private int sent = 0;
 	
-	public TFTPSendContext( ImageRepository imageRepository, InetAddress address, int port, String imageName, String filePath ) {
-		this.imageRepository = imageRepository;
+	public TFTPSendContext( ImageContentRepository imageContentRepository, InetAddress address, int port, Image image, String filePath ) {
+		this.imageContentRepository = imageContentRepository;
 		this.address = address;
 		this.port = port;
-		this.imageName = imageName;
+		this.image = image;
 		this.filePath = filePath;
 	}
 	
 	public boolean hasMore() throws IOException {
 		
-		int fileBytes = this.imageRepository.getImageFileSize( this.imageName, this.filePath );
+		long fileBytes = this.imageContentRepository.getImageFileSize( this.image, this.filePath );
 		
 		long remaining = fileBytes - sent;
 		
@@ -50,7 +51,7 @@ public class TFTPSendContext {
 	public void sendNextBlock( TFTP tftp ) throws IOException {
 
 		byte[] data = new byte[ TFTPPacket.SEGMENT_SIZE ];		
-		int count = this.imageRepository.readImageFile( this.imageName, this.filePath, data, sent, data.length );
+		int count = this.imageContentRepository.readImageFile( this.image, this.filePath, data, sent, data.length );
 
 		sent += count;
 		++block;

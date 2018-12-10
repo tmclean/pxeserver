@@ -6,8 +6,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import net.tmclean.pxeserver.iso.ImageRepository;
-import net.tmclean.pxeserver.iso.ImageRepositoryImpl;
+import net.tmclean.pxeserver.image.AggregateImageContentRepository;
+import net.tmclean.pxeserver.image.Image;
+import net.tmclean.pxeserver.image.ImageContentRepository;
+import net.tmclean.pxeserver.image.ImageRepository;
+import net.tmclean.pxeserver.image.ImageRepositoryImpl;
 import net.tmclean.pxeserver.nfs.NfsService;
 import net.tmclean.pxeserver.tftp.TFTPServer;
 
@@ -20,9 +23,14 @@ public class Main {
 
 		try{
 			ImageRepository imageRepository = new ImageRepositoryImpl();
+			ImageContentRepository imageContentRepository = new AggregateImageContentRepository();
 			
-			TFTPServer tftpServer = new TFTPServer( imageRepository );
-			NfsService nfsServer = new NfsService( imageRepository );
+			for( Image image : imageRepository.getAllImages() ) {
+				imageContentRepository.initImage( image );
+			}
+			
+			TFTPServer tftpServer = new TFTPServer( imageRepository, imageContentRepository );
+			NfsService nfsServer = new NfsService( imageRepository, imageContentRepository );
 			
 			waitForShutdown(
 				servers.submit( tftpServer ),

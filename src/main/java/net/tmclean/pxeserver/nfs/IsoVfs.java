@@ -18,11 +18,12 @@ import org.dcache.nfs.vfs.Stat;
 import org.dcache.nfs.vfs.VirtualFileSystem;
 import org.dcache.nfs.vfs.Stat.Type;
 
-import com.github.stephenc.javaisotools.loopfs.iso9660.Iso9660FileEntry;
 import com.google.common.primitives.Longs;
 
-import net.tmclean.pxeserver.iso.Image;
-import net.tmclean.pxeserver.iso.ImageRepository;
+import net.tmclean.pxeserver.image.Image;
+import net.tmclean.pxeserver.image.ImageContentRepository;
+import net.tmclean.pxeserver.image.ImageFileEntry;
+import net.tmclean.pxeserver.image.ImageRepository;
 
 public class IsoVfs implements VirtualFileSystem {
 
@@ -31,9 +32,11 @@ public class IsoVfs implements VirtualFileSystem {
     private final NfsIdMapping _idMapper = new SimpleIdMap();
 
     private final ImageRepository imageRepository;
+    private final ImageContentRepository imageContentRepository;
     
-    public IsoVfs( ImageRepository imageRepository ) {
+    public IsoVfs( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
     	this.imageRepository = imageRepository;
+    	this.imageContentRepository = imageContentRepository;
 	}
 
 	@Override
@@ -72,25 +75,30 @@ public class IsoVfs implements VirtualFileSystem {
         	}
         }
         else {
-        	String imageName = "";
+        	Image image = null;
         	String filePath  = "";
         	String resolvedPath = resolveInode( inodeNumber );
         	
-        	if( this.imageRepository.isImageRootId( inodeNumber ) ) {
-        		imageName = resolvedPath;
-                System.out.println( "Getting root for image named " + imageName );
+        	if( this.imageContentRepository.isImageRootId( inodeNumber ) ) {
+        		image = this.imageRepository.getImage( resolvedPath );
+                System.out.println( "Getting root for image named " + image.getName() );
         	}
         	else {
-        		imageName = resolvedPath.substring( 0, resolvedPath.indexOf( '/' ) );
-        		filePath  = resolvedPath.substring( resolvedPath.indexOf( "/" ) + 1 );
+        		String imageName = resolvedPath.substring( 0, resolvedPath.indexOf( '/' ) );
+        		image    = this.imageRepository.getImage( imageName );
+        		filePath = resolvedPath.substring( resolvedPath.indexOf( "/" ) + 1 );
+        	}
+        	
+        	if( image == null ) { 
+        		throw new NoEntException( "Failed to locate image for path " + resolvedPath );
         	}
 
-            System.out.println( "Getting path " + filePath + " for image named " + imageName );
+            System.out.println( "Getting path " + filePath + " for image named " + image.getName() );
             
-            for( String p : this.imageRepository.listImagePath( imageName, filePath ) ) {
+            for( String p : this.imageContentRepository.listImagePath( image, filePath ) ) {
     			cookie++;
     			if( cookie > l ) {
-    		        list.add( imagePathToDirEntry( imageName + "/" + p, inodeNumber, cookie ) );
+    		        list.add( imagePathToDirEntry( image.getName() + "/" + p, inodeNumber, cookie ) );
     			}
             }
         }
@@ -128,7 +136,9 @@ public class IsoVfs implements VirtualFileSystem {
 		String imageName = path.substring( 0, path.indexOf( '/' ) );
 		String filePath  = path.substring( path.indexOf( "/" )+1 );
     	
-        return this.imageRepository.readImageFile( imageName, filePath, data, offset, count );
+		Image image = this.imageRepository.getImage( imageName );
+		
+        return this.imageContentRepository.readImageFile( image, filePath, data, (int)offset, count );
 	}
 
 	@Override
@@ -225,16 +235,18 @@ public class IsoVfs implements VirtualFileSystem {
     		String imageName = path.substring( 0, path.indexOf( '/' ) );
     		String filePath  = path.substring( path.indexOf( "/" )+1 );
 
-            Iso9660FileEntry isoEntry = this.imageRepository.getFileEntry( imageName, filePath );	
+    		Image image = this.imageRepository.getImage( imageName );
+    		
+    		ImageFileEntry entry = this.imageContentRepository.getFileEntry( image, filePath );	
             
-            int type = isoEntry.isDirectory() ? Stat.S_IFDIR : Stat.S_IFREG;
+            int type = entry.isDirectory() ? Stat.S_IFDIR : Stat.S_IFREG;
             
             stat.setMode( type | 0707 );
-            stat.setATime( isoEntry.getLastModifiedTime() );
-            stat.setCTime( isoEntry.getLastModifiedTime() );
-            stat.setMTime( isoEntry.getLastModifiedTime() );
-            stat.setSize( isoEntry.getSize() );
-            stat.setGeneration( isoEntry.getLastModifiedTime() );
+            stat.setATime( entry.getLastModified() );
+            stat.setCTime( entry.getLastModified() );
+            stat.setMTime( entry.getLastModified() );
+            stat.setSize( entry.getLength() );
+            stat.setGeneration( entry.getLastModified() );
     	}
 
         stat.setGid( 0 );
@@ -255,15 +267,15 @@ public class IsoVfs implements VirtualFileSystem {
     	if( inodeNumber == ROOT_INODE ) {
     		return "";
     	}
-    	else if( this.imageRepository.isImageRootId( inodeNumber ) ) {
+    	else if( this.imageContentRepository.isImageRootId( inodeNumber ) ) {
     		return getImage( inodeNumber ).getName();
     	}
     	else {
-    		long imageId = this.imageRepository.imageFileIdToImageId( inodeNumber );
+    		long imageId = this.imageContentRepository.imageFileIdToImageId( inodeNumber );
     		Image image = getImage( imageId );
     		
 	    	String imageName = image.getName();
-	    	String filePath  = this.imageRepository.idToFilePath( inodeNumber );
+	    	String filePath  = this.imageContentRepository.idToFilePath( image, inodeNumber );
     	
 	    	return imageName + "/" + filePath;
     	}
@@ -302,7 +314,9 @@ public class IsoVfs implements VirtualFileSystem {
 				String imageName = path.substring( 0, path.indexOf( '/' ) );
 				String filePath  = path.substring( path.indexOf( "/" )+1 );
 				
-				return this.imageRepository.filePathToId( imageName, filePath );
+				Image image = this.imageRepository.getImage( imageName );
+				
+				return this.imageContentRepository.filePathToId( image, filePath );
 	    	}
     	}
 		catch( IOException e ) {

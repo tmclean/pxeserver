@@ -11,7 +11,10 @@ import org.apache.commons.net.tftp.TFTPErrorPacket;
 import org.apache.commons.net.tftp.TFTPPacket;
 import org.apache.commons.net.tftp.TFTPPacketException;
 import org.apache.commons.net.tftp.TFTPReadRequestPacket;
-import net.tmclean.pxeserver.iso.ImageRepository;
+
+import net.tmclean.pxeserver.image.Image;
+import net.tmclean.pxeserver.image.ImageContentRepository;
+import net.tmclean.pxeserver.image.ImageRepository;
 
 public class TFTPServer implements Callable<Void>{
 
@@ -20,12 +23,14 @@ public class TFTPServer implements Callable<Void>{
 	}
 
 	private final ImageRepository imageRepository;
+	private final ImageContentRepository imageContentRepository;
 	
 	private final TFTP tftp = new TFTP();
 	private final Map<String, TFTPSendContext> sendContextMap = new ConcurrentHashMap<>();
 	
-	public TFTPServer( ImageRepository imageRepository ) {
+	public TFTPServer( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
 		this.imageRepository = imageRepository;
+		this.imageContentRepository = imageContentRepository;
 	}
 	
 	public Void call() throws IOException, TFTPPacketException {
@@ -70,7 +75,7 @@ public class TFTPServer implements Callable<Void>{
 							packet.getAddress(), 
 							packet.getPort(), 
 							TFTPErrorPacket.ERROR, 
-							t.getMessage() 
+							"ERROR"
 						);
 					
 					tftp.send( error );
@@ -94,7 +99,9 @@ public class TFTPServer implements Callable<Void>{
 		String imageName   = reqFilename.substring( 0, reqFilename.indexOf( '/' ) );
 		String filePath    = reqFilename.substring( reqFilename.indexOf( "/" )+1 );
 		
-		if( !this.imageRepository.imageFilePathExists( imageName, filePath ) ) {
+		Image image = this.imageRepository.getImage( imageName );
+		
+		if( !this.imageContentRepository.imageFilePathExists( image, filePath ) ) {
 			tftp.send( 
 				new TFTPErrorPacket( 
 					readReq.getAddress(), 
@@ -108,10 +115,10 @@ public class TFTPServer implements Callable<Void>{
 		}
 		
 		TFTPSendContext sendCtx = new TFTPSendContext( 
-			this.imageRepository,
+			this.imageContentRepository,
 			readReq.getAddress(), 
 			readReq.getPort(),
-			imageName,
+			image,
 			filePath
 		);
 		
