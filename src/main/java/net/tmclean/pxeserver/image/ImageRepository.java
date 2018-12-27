@@ -7,4 +7,5 @@ public interface ImageRepository {
 	List<Image> getAllImages();
 	Image getImage( String name );
 	Image getImage( long id );
+	Image getRootImage();
 }

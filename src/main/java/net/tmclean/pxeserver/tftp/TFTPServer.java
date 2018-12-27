@@ -96,12 +96,29 @@ public class TFTPServer implements Callable<Void>{
 		System.out.println( "Got read request for " + readReq.getFilename() + " with mode " + modeStr  );
 		
 		String reqFilename = readReq.getFilename();
-		String imageName   = reqFilename.substring( 0, reqFilename.indexOf( '/' ) );
-		String filePath    = reqFilename.substring( reqFilename.indexOf( "/" )+1 );
+		reqFilename = reqFilename.replace( "//", "/" );
+
+		String imageName = reqFilename.substring( 0, reqFilename.indexOf( '/' ) );
+		String filePath  = reqFilename.substring( reqFilename.indexOf( "/" )+1 );
 		
+		if( "".equals( imageName ) ) {
+			imageName = "/";
+		}
+
 		Image image = this.imageRepository.getImage( imageName );
 		
+		if( image == null || !imageContentRepository.imageFilePathExists( image, filePath ) ) {
+			imageName = filePath.substring( 0, filePath.indexOf( '/' ) );
+			filePath  = filePath.substring( filePath.indexOf( "/" )+1 );
+			
+			image = imageRepository.getImage( imageName );
+		}
+
+		System.out.println( "Resolved image name "  + imageName + " and file path " + filePath );		
+		
 		if( !this.imageContentRepository.imageFilePathExists( image, filePath ) ) {
+			System.out.println( "File path " + filePath + " does not exist" );
+			
 			tftp.send( 
 				new TFTPErrorPacket( 
 					readReq.getAddress(), 
@@ -132,7 +149,7 @@ public class TFTPServer implements Callable<Void>{
 	private void processAckPacket( TFTPAckPacket ack ) throws IOException {
 		
 		String sessionStr = buildSessionStr( ack );
-		
+
 		if( sendContextMap.containsKey( sessionStr ) ) {
 			TFTPSendContext sendCtx = sendContextMap.get( sessionStr );
 			if( sendCtx.hasMore() ) {

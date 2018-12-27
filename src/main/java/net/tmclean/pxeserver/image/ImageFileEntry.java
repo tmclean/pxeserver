@@ -1,6 +1,7 @@
 package net.tmclean.pxeserver.image;
 
 public class ImageFileEntry {
+	
 	private String name;
 	private String path;
 	private long length;

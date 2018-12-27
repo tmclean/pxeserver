@@ -1,11 +1,15 @@
 package net.tmclean.pxeserver.image;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class ImageRepositoryImpl implements ImageRepository {
 
@@ -14,30 +18,26 @@ public class ImageRepositoryImpl implements ImageRepository {
 	private final Map<Long,   Image> idToImageMap   = new ConcurrentHashMap<>();
 	private final Map<String, Image> nameToImageMap = new ConcurrentHashMap<>();
 	
+	private Image rootImage;
+	
 	public ImageRepositoryImpl() throws IOException {
-
-		Image debian950 = new Image();
-		debian950.setName( "debian-9-5-0" );
-		debian950.setDescription( "Debian Stretch 9.5.0 ISO" );
-		debian950.setId( 1L << 24 );
-		debian950.setFormat( ImageFormat.LOCAL_ISO );
-		debian950.setLocation( "C:/users/tjrag/desktop/debian-9.5.0-amd64-netinst.iso" );
+		String jsonDbFile = System.getProperty( "pxeserver.jsonDb" );
+		byte[] jsonData = Files.readAllBytes( Paths.get( jsonDbFile ) );
+		ObjectMapper mapper = new ObjectMapper();
+		Image[] images = mapper.readValue( jsonData, Image[].class );
 		
-		Image pxelinux = new Image();
-		pxelinux.setName( "pxelinux" );
-		pxelinux.setDescription( "PXELINUX" );
-		pxelinux.setId( 2L << 24 );
-		pxelinux.setFormat( ImageFormat.LOCAL_DIR );
-		pxelinux.setLocation( "C:/users/tjrag/desktop/pxelinux" );
-		
-		addImage( debian950 );
-		addImage( pxelinux );
+		for( Image image : images ) {
+			this.addImage( image );
+		}
 	}
 	
 	private void addImage( Image image ) {
 		images.add( image );
 		idToImageMap.put( image.getId(), image );
 		nameToImageMap.put( image.getName(), image );
+		if( image.isRoot() ) {
+			this.rootImage = image;
+		}
 	}
 	
 	@Override
@@ -53,5 +53,10 @@ public class ImageRepositoryImpl implements ImageRepository {
 	@Override
 	public Image getImage( String name ) {
 		return this.nameToImageMap.get( name );
+	}
+	
+	@Override
+	public Image getRootImage() {
+		return this.rootImage;
 	}
 }

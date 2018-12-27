@@ -51,6 +51,7 @@ public class TFTPSendContext {
 	public void sendNextBlock( TFTP tftp ) throws IOException {
 
 		byte[] data = new byte[ TFTPPacket.SEGMENT_SIZE ];		
+//		byte[] data = new byte[ 1468 ];
 		int count = this.imageContentRepository.readImageFile( this.image, this.filePath, data, sent, data.length );
 
 		sent += count;

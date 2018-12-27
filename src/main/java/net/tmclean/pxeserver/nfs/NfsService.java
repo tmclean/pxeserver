@@ -36,9 +36,13 @@ public class NfsService implements Callable<Void> {
 
 		StringBuffer exportStr = new StringBuffer();
 		exportStr.append( "/ 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
+		exportStr.append( "/ 10.4.2.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
 		
 		for( Image image : this.imageRepository.getAllImages() ) {
-			exportStr.append( "/" + image.getName() + " 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
+			if( !"/".equals( image.getName() ) ) {
+				exportStr.append( "/" + image.getName() + " 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
+				exportStr.append( "/" + image.getName() + " 10.4.2.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
+			}
 		}
 		
 		ExportFile exportFile = new ExportFile( new StringReader( exportStr.toString() ) );

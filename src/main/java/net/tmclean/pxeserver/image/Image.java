@@ -5,8 +5,13 @@ public class Image {
 	private long        id;
 	private String      name;
 	private String      description;
+	private boolean     root;
 	private ImageFormat format;
 	private String      location; 
+	
+	public Image() {
+		root = false;
+	}
 	
 	public long getId() {
 		return id;
@@ -29,6 +34,13 @@ public class Image {
 		this.description = description;
 	}
 	
+	public boolean isRoot() {
+		return root;
+	}
+	public void setRoot(boolean root) {
+		this.root = root;
+	}
+
 	public ImageFormat getFormat() {
 		return format;
 	}
