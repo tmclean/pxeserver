@@ -19,29 +19,26 @@ import net.tmclean.pxeserver.image.ImageFileEntry;
 
 public class IsoImageContentRepository implements ImageContentRepository {
 
-	private final Map<String, Iso9660FileSystem>             imagesIsoFsMap      = new ConcurrentHashMap<>();
-	private final Map<String, Map<String, Iso9660FileEntry>> imagesToIsoContents = new ConcurrentHashMap<>();
-
-	private final Map<String, Map<String, Long>> imageFilenameToId = new ConcurrentHashMap<>();
-	private final Map<String, Map<Long, String>> imageIdToFilename = new ConcurrentHashMap<>();
+	private final Image image;
+	
+	private Iso9660FileSystem isoFs = null;
+	private Map<String, Iso9660FileEntry> tableOfContents = null;
+	private Map<String, Long> filenameToId = null;
+	private Map<Long, String> idToFilename = null;
+	
+	public IsoImageContentRepository( Image image ) {
+		this.image = image;
+	}
 	
 	@Override
-	public void initImage( Image image ) throws IOException {
+	public void init() throws IOException {
 
-		String imageName = image.getName();
-		
 		File isoFile = new File( image.getLocation() );
-		Iso9660FileSystem isoFs = new Iso9660FileSystem( isoFile, true );
-		imagesIsoFsMap.put( imageName, isoFs );
-
-		Map<String, Long> filenameToId    = new ConcurrentHashMap<>();
-		Map<Long, String> idToFilename    = new ConcurrentHashMap<>();
-		Map<String, Iso9660FileEntry> toc = new ConcurrentHashMap<>();
 		
-		imagesToIsoContents.put( imageName, toc );
-		
-		this.imageFilenameToId.put( imageName, filenameToId );
-		this.imageIdToFilename.put( imageName, idToFilename );
+		this.isoFs           = new Iso9660FileSystem( isoFile, true );
+		this.filenameToId    = new ConcurrentHashMap<>();
+		this.idToFilename    = new ConcurrentHashMap<>();
+		this.tableOfContents = new ConcurrentHashMap<>();
 
 		AtomicLong i = new AtomicLong( 0 );
 		isoFs.forEach( e -> {
@@ -51,7 +48,7 @@ public class IsoImageContentRepository implements ImageContentRepository {
 				path = path.substring( 0, path.length()-1 );
 			}
 			
-			toc.put( path, e );
+			tableOfContents.put( path, e );
 			
 			long fileId = i.incrementAndGet() | image.getId();
 			System.out.println( path + " ::: " + String.format( "%016x", fileId ) );
@@ -60,37 +57,39 @@ public class IsoImageContentRepository implements ImageContentRepository {
 			idToFilename.put( fileId, path   );
 		});
 	}
+
+	@Override
+	public void destroy() throws IOException {
+		this.isoFs.close();
+	}
 	
 
 	@Override
-	public long filePathToId( Image image, String filePath ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
+	public long filePathToId( String filePath ) throws IOException {
+		if( !filePathExists( filePath ) ) {
 			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
 		}
 		
-		return this.imageFilenameToId.get( image.getName() ).get( filePath ).longValue();
+		return this.filenameToId.get( filePath ).longValue();
 	}
 
 	@Override
-	public String idToFilePath( Image image, long id ) throws IOException {
-		return this.imageIdToFilename.get( image.getName() ).get( id );
+	public String idToFilePath( long id ) throws IOException {
+		return this.idToFilename.get( id );
 	}
 
 	@Override
-	public boolean imageFilePathExists( Image image, String filePath ) throws IOException {
-		if( !this.imagesToIsoContents.containsKey( image.getName() ) ) {
-			return false;
-		}
-		return this.imagesToIsoContents.get( image.getName() ).containsKey( filePath );
+	public boolean filePathExists( String filePath ) throws IOException {
+		return this.tableOfContents.containsKey( filePath );
 	}
 	
 	@Override
-	public ImageFileEntry getFileEntry( Image image, String filePath ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
+	public ImageFileEntry getFileEntry( String filePath ) throws IOException {
+		if( !filePathExists( filePath ) ) {
 			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
 		}
 		
-		Iso9660FileEntry entry = this.imagesToIsoContents.get( image.getName() ).get( filePath );
+		Iso9660FileEntry entry = this.tableOfContents.get( filePath );
 
 		ImageFileEntry result = new ImageFileEntry();
 		result.setName( entry.getName() );
@@ -103,56 +102,39 @@ public class IsoImageContentRepository implements ImageContentRepository {
 	}
 
 	@Override
-	public long getImageFileSize( Image image, String filePath ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
+	public long getFileSize( String filePath ) throws IOException {
+		if( !filePathExists( filePath ) ) {
 			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
 		}
 		
 		
-		return imagesToIsoContents.get( image.getName() ).get( filePath ).getSize();
+		return tableOfContents.get( filePath ).getSize();
 	}
 
 	@Override
-	public int readImageFile( Image image, String filePath, byte[] data, int offset, int length ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
+	public int readFile( String filePath, byte[] data, int offset, int length ) throws IOException {
+		if( !filePathExists( filePath ) ) {
 			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
 		}
 		
-		Iso9660FileEntry entry = this.imagesToIsoContents.get( image.getName() ).get( filePath );
-		Iso9660FileSystem fs = this.imagesIsoFsMap.get( image.getName() );
+		Iso9660FileEntry entry = this.tableOfContents.get( filePath );
 		
-		try( InputStream is = fs.getInputStream( entry ) ) {
+		try( InputStream is = this.isoFs.getInputStream( entry ) ) {
 			is.skip( offset );
 			return is.read( data );
 		}
 	}
 
 	@Override
-	public List<String> listImagePath( Image image, String filePath ) throws IOException {
-		
-		if( !this.imagesToIsoContents.containsKey( image.getName() ) ) {
-			throw new IOException();
-		}
-		
-		 Set<String> paths = this.imagesToIsoContents.get( image.getName() ).keySet();
+	public List<String> listPath( String filePath ) throws IOException {
+
+		 Set<String> paths = this.tableOfContents.keySet();
 		 List<String> result = paths.stream().collect( Collectors.toList() );
 		 
 		return result
 			.stream()
 			.filter( p -> matchesPrefix( p, filePath ) )
 			.collect( Collectors.toList() );
-	}
-	
-	@Override
-	public void destroy() {
-		this.imagesIsoFsMap.values().stream().forEach( fs -> {
-			try {
-				fs.close();
-			}
-			catch( IOException e ) {
-				e.printStackTrace();
-			}
-		});
 	}
 	
 	private boolean matchesPrefix( String actualPath, String prefix ) {
@@ -169,5 +151,4 @@ public class IsoImageContentRepository implements ImageContentRepository {
 		
 		return false;
 	}
-
 }

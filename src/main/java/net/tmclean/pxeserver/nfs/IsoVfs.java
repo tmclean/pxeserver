@@ -16,15 +16,17 @@ import org.dcache.nfs.vfs.FsStat;
 import org.dcache.nfs.vfs.Inode;
 import org.dcache.nfs.vfs.Stat;
 import org.dcache.nfs.vfs.VirtualFileSystem;
+import org.springframework.stereotype.Component;
 import org.dcache.nfs.vfs.Stat.Type;
 
 import com.google.common.primitives.Longs;
 
 import net.tmclean.pxeserver.image.Image;
-import net.tmclean.pxeserver.image.ImageContentRepository;
 import net.tmclean.pxeserver.image.ImageFileEntry;
 import net.tmclean.pxeserver.image.ImageRepository;
+import net.tmclean.pxeserver.image.aggregate.ImageContentDirectory;
 
+@Component
 public class IsoVfs implements VirtualFileSystem {
 
 	private static final long ROOT_INODE = 1L;
@@ -32,11 +34,11 @@ public class IsoVfs implements VirtualFileSystem {
     private final NfsIdMapping _idMapper = new SimpleIdMap();
 
     private final ImageRepository imageRepository;
-    private final ImageContentRepository imageContentRepository;
+    private final ImageContentDirectory contentDirectory;
     
-    public IsoVfs( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
+    public IsoVfs( ImageRepository imageRepository, ImageContentDirectory contentDirectory ) {
     	this.imageRepository = imageRepository;
-    	this.imageContentRepository = imageContentRepository;
+    	this.contentDirectory = contentDirectory;
 	}
 
 	@Override
@@ -79,7 +81,7 @@ public class IsoVfs implements VirtualFileSystem {
         	String filePath  = "";
         	String resolvedPath = resolveInode( inodeNumber );
         	
-        	if( this.imageContentRepository.isImageRootId( inodeNumber ) ) {
+        	if( this.contentDirectory.isImageRootId( inodeNumber ) ) {
         		image = this.imageRepository.getImage( resolvedPath );
                 System.out.println( "Getting root for image named " + image.getName() );
         	}
@@ -95,7 +97,7 @@ public class IsoVfs implements VirtualFileSystem {
 
             System.out.println( "Getting path " + filePath + " for image named " + image.getName() );
             
-            for( String p : this.imageContentRepository.listImagePath( image, filePath ) ) {
+            for( String p : this.contentDirectory.listImagePath( image, filePath ) ) {
     			cookie++;
     			if( cookie > l ) {
     		        list.add( imagePathToDirEntry( image.getName() + "/" + p, inodeNumber, cookie ) );
@@ -138,7 +140,7 @@ public class IsoVfs implements VirtualFileSystem {
     	
 		Image image = this.imageRepository.getImage( imageName );
 		
-        return this.imageContentRepository.readImageFile( image, filePath, data, (int)offset, count );
+        return this.contentDirectory.readImageFile( image, filePath, data, (int)offset, count );
 	}
 
 	@Override
@@ -237,7 +239,7 @@ public class IsoVfs implements VirtualFileSystem {
 
     		Image image = this.imageRepository.getImage( imageName );
     		
-    		ImageFileEntry entry = this.imageContentRepository.getFileEntry( image, filePath );	
+    		ImageFileEntry entry = this.contentDirectory.getFileEntry( image, filePath );	
             
             int type = entry.isDirectory() ? Stat.S_IFDIR : Stat.S_IFREG;
             
@@ -267,15 +269,15 @@ public class IsoVfs implements VirtualFileSystem {
     	if( inodeNumber == ROOT_INODE ) {
     		return "";
     	}
-    	else if( this.imageContentRepository.isImageRootId( inodeNumber ) ) {
+    	else if( this.contentDirectory.isImageRootId( inodeNumber ) ) {
     		return getImage( inodeNumber ).getName();
     	}
     	else {
-    		long imageId = this.imageContentRepository.imageFileIdToImageId( inodeNumber );
+    		long imageId = this.contentDirectory.imageFileIdToImageId( inodeNumber );
     		Image image = getImage( imageId );
     		
 	    	String imageName = image.getName();
-	    	String filePath  = this.imageContentRepository.idToFilePath( image, inodeNumber );
+	    	String filePath  = this.contentDirectory.idToFilePath( image, inodeNumber );
     	
 	    	return imageName + "/" + filePath;
     	}
@@ -316,7 +318,7 @@ public class IsoVfs implements VirtualFileSystem {
 				
 				Image image = this.imageRepository.getImage( imageName );
 				
-				return this.imageContentRepository.filePathToId( image, filePath );
+				return this.contentDirectory.filePathToId( image, filePath );
 	    	}
     	}
 		catch( IOException e ) {

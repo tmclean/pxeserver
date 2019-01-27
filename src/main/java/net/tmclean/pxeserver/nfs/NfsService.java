@@ -2,8 +2,6 @@ package net.tmclean.pxeserver.nfs;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.concurrent.Callable;
-
 import org.dcache.nfs.ExportFile;
 import org.dcache.nfs.v3.NfsServerV3;
 import org.dcache.nfs.v3.xdr.mount_prot;
@@ -11,29 +9,30 @@ import org.dcache.nfs.v3.xdr.nfs3_prot;
 import org.dcache.nfs.v4.MDSOperationFactory;
 import org.dcache.nfs.v4.NFSServerV41;
 import org.dcache.nfs.v4.xdr.nfs4_prot;
+import org.dcache.nfs.vfs.VirtualFileSystem;
 import org.dcache.oncrpc4j.portmap.OncRpcEmbeddedPortmap;
 import org.dcache.oncrpc4j.rpc.OncRpcProgram;
 import org.dcache.oncrpc4j.rpc.OncRpcSvc;
 import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
+import org.springframework.stereotype.Service;
 
+import net.tmclean.pxeserver.DaemonService;
 import net.tmclean.pxeserver.image.Image;
-import net.tmclean.pxeserver.image.ImageContentRepository;
 import net.tmclean.pxeserver.image.ImageRepository;
 
-public class NfsService implements Callable<Void> {
+@Service
+public class NfsService extends DaemonService {
 
     private final ImageRepository imageRepository;
-    private final ImageContentRepository imageContentRepository;
+    private final VirtualFileSystem vfs;
     
-	public NfsService( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
+	public NfsService( ImageRepository imageRepository, IsoVfs vfs ) {
     	this.imageRepository = imageRepository;
-    	this.imageContentRepository = imageContentRepository;
+    	this.vfs = vfs;
 	}
-	
+
 	@Override
 	public Void call() throws IOException {
-		IsoVfs vfs = new IsoVfs( this.imageRepository, this.imageContentRepository );
-
 		StringBuffer exportStr = new StringBuffer();
 		exportStr.append( "/ 127.0.0.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );
 		exportStr.append( "/ 10.4.2.1(ro,no_root_squash,all_squash,all_root,anonuid=0,anongid=0)" ).append( "\n" );

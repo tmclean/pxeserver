@@ -19,27 +19,25 @@ import net.tmclean.pxeserver.image.ImageFileEntry;
 
 public class DirectoryImageContentRepository implements ImageContentRepository {
 
-	private final Map<String, File>              imagesFsDirMap      = new ConcurrentHashMap<>();
-	private final Map<String, Map<String, File>> imagesToDirContents = new ConcurrentHashMap<>();
-
-	private final Map<String, Map<String, Long>> imageFilenameToId = new ConcurrentHashMap<>();
-	private final Map<String, Map<Long, String>> imageIdToFilename = new ConcurrentHashMap<>();
+	private final Image image;
 	
-	@Override
-	public void initImage( Image image ) throws IOException {
-		String imageName = image.getName();
+	private File baseDir;
+	
+	private Map<String, File> tableOfContents = null;
+	private Map<String, Long> filenameToId = null;
+	private Map<Long, String> idToFilename = null;
+	
+	public DirectoryImageContentRepository( Image image ) throws IOException {
+		this.image = image;
+	}
+	
+	public void init() throws IOException {
 		
-		File baseDir = new File( image.getLocation() );
-		imagesFsDirMap.put( imageName, baseDir );
+		this.baseDir = new File( image.getLocation() );
 
-		Map<String, Long> filenameToId = new ConcurrentHashMap<>();
-		Map<Long, String> idToFilename = new ConcurrentHashMap<>();
-		Map<String, File> toc          = new ConcurrentHashMap<>();
-		
-		imagesToDirContents.put( imageName, toc );
-		
-		this.imageFilenameToId.put( imageName, filenameToId );
-		this.imageIdToFilename.put( imageName, idToFilename );
+		this.filenameToId    = new ConcurrentHashMap<>();
+		this.idToFilename    = new ConcurrentHashMap<>();
+		this.tableOfContents = new ConcurrentHashMap<>();
 
 		AtomicLong i = new AtomicLong( 0 );
 		
@@ -60,7 +58,7 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 				return;
 			}
 			
-			toc.put( path, new File( baseDir, path ) );
+			this.tableOfContents.put( path, new File( baseDir, path ) );
 			
 			long fileId = i.incrementAndGet() | image.getId();
 			System.out.println( path + " ::: " + String.format( "%016x", fileId ) );
@@ -71,40 +69,36 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 	}
 
 	@Override
-	public long getImageFileSize( Image image, String filePath ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
+	public void destroy() {}
+	
+	@Override
+	public long getFileSize( String filePath ) throws IOException {
+		return this.tableOfContents.get( filePath ).length();
+	}
+
+	@Override
+	public boolean filePathExists( String filePath ) throws IOException {
+		
+		return this.tableOfContents.containsKey( filePath );
+	}
+
+	@Override
+	public long filePathToId( String filePath ) throws IOException {
+		if( !filePathExists( filePath ) ) {
 			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
 		}
 		
-		return this.imagesToDirContents.get( image.getName() ).get( filePath ).length();
+		return this.filenameToId.get( filePath );
 	}
 
 	@Override
-	public boolean imageFilePathExists( Image image, String filePath ) throws IOException {
-		if( !this.imagesToDirContents.containsKey( image.getName() ) ) {
-			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
-		}
-		
-		return this.imagesToDirContents.get( image.getName() ).containsKey( filePath );
+	public String idToFilePath( long id ) throws IOException {
+		return this.idToFilename.get( id );
 	}
 
 	@Override
-	public long filePathToId( Image image, String filePath ) throws IOException {
-		if( !imageFilePathExists( image, filePath ) ) {
-			throw new IOException( "File " + filePath + " not found in image " + image.getName() );
-		}
-		
-		return this.imageFilenameToId.get( image.getName() ).get( filePath );
-	}
-
-	@Override
-	public String idToFilePath( Image image, long id ) throws IOException {
-		return this.imageIdToFilename.get( image.getName() ).get( id );
-	}
-
-	@Override
-	public int readImageFile( Image image, String filePath, byte[] data, int offset, int length ) throws IOException {
-		File file = this.imagesToDirContents.get( image.getName() ).get( filePath );
+	public int readFile( String filePath, byte[] data, int offset, int length ) throws IOException {
+		File file = this.tableOfContents.get( filePath );
 		try( InputStream is = new FileInputStream( file ) ){
 			is.skip( offset );
 			return is.read( data );
@@ -112,9 +106,9 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 	}
 
 	@Override
-	public ImageFileEntry getFileEntry( Image image, String filePath ) throws IOException {
+	public ImageFileEntry getFileEntry( String filePath ) throws IOException {
 
-		File file = this.imagesToDirContents.get( image.getName() ).get( filePath );
+		File file = this.tableOfContents.get( filePath );
 		
 		if( file == null ) {
 			throw new IOException( "Failed to locate file " + filePath + " in image " + image.getName() );
@@ -131,12 +125,8 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 	}
 	
 	@Override
-	public List<String> listImagePath( Image image, String filePath ) throws IOException {
-		if( !this.imagesToDirContents.containsKey( image.getName() ) ) {
-			throw new IOException();
-		}
-		
-		 Set<String> paths = this.imagesToDirContents.get( image.getName() ).keySet();
+	public List<String> listPath( String filePath ) throws IOException {
+		 Set<String> paths = this.tableOfContents.keySet();
 		 List<String> result = paths.stream().collect( Collectors.toList() );
 		 
 		return result
@@ -144,9 +134,6 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 			.filter( p -> matchesPrefix( p, filePath ) )
 			.collect( Collectors.toList() );
 	}
-
-	@Override
-	public void destroy() {}
 
 	
 	private boolean matchesPrefix( String actualPath, String prefix ) {

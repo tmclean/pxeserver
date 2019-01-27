@@ -3,7 +3,6 @@ package net.tmclean.pxeserver.tftp;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.net.tftp.TFTP;
 import org.apache.commons.net.tftp.TFTPAckPacket;
@@ -11,26 +10,29 @@ import org.apache.commons.net.tftp.TFTPErrorPacket;
 import org.apache.commons.net.tftp.TFTPPacket;
 import org.apache.commons.net.tftp.TFTPPacketException;
 import org.apache.commons.net.tftp.TFTPReadRequestPacket;
+import org.springframework.stereotype.Service;
 
+import net.tmclean.pxeserver.DaemonService;
 import net.tmclean.pxeserver.image.Image;
-import net.tmclean.pxeserver.image.ImageContentRepository;
 import net.tmclean.pxeserver.image.ImageRepository;
+import net.tmclean.pxeserver.image.aggregate.ImageContentDirectory;
 
-public class TFTPServer implements Callable<Void>{
+@Service
+public class TFTPServer extends DaemonService {
 
 	private static String buildSessionStr( TFTPPacket packet ) {
 		return packet.getAddress().getHostAddress() + ":" + packet.getPort();
 	}
 
 	private final ImageRepository imageRepository;
-	private final ImageContentRepository imageContentRepository;
+	private final ImageContentDirectory contentDirectory;
 	
 	private final TFTP tftp = new TFTP();
 	private final Map<String, TFTPSendContext> sendContextMap = new ConcurrentHashMap<>();
 	
-	public TFTPServer( ImageRepository imageRepository, ImageContentRepository imageContentRepository ) {
+	public TFTPServer( ImageRepository imageRepository, ImageContentDirectory contentDirectory ) {
 		this.imageRepository = imageRepository;
-		this.imageContentRepository = imageContentRepository;
+		this.contentDirectory = contentDirectory;
 	}
 	
 	public Void call() throws IOException, TFTPPacketException {
@@ -107,7 +109,7 @@ public class TFTPServer implements Callable<Void>{
 
 		Image image = this.imageRepository.getImage( imageName );
 		
-		if( image == null || !imageContentRepository.imageFilePathExists( image, filePath ) ) {
+		if( image == null || !contentDirectory.imageFilePathExists( image, filePath ) ) {
 			imageName = filePath.substring( 0, filePath.indexOf( '/' ) );
 			filePath  = filePath.substring( filePath.indexOf( "/" )+1 );
 			
@@ -116,7 +118,7 @@ public class TFTPServer implements Callable<Void>{
 
 		System.out.println( "Resolved image name "  + imageName + " and file path " + filePath );		
 		
-		if( !this.imageContentRepository.imageFilePathExists( image, filePath ) ) {
+		if( !this.contentDirectory.imageFilePathExists( image, filePath ) ) {
 			System.out.println( "File path " + filePath + " does not exist" );
 			
 			tftp.send( 
@@ -132,7 +134,7 @@ public class TFTPServer implements Callable<Void>{
 		}
 		
 		TFTPSendContext sendCtx = new TFTPSendContext( 
-			this.imageContentRepository,
+			this.contentDirectory,
 			readReq.getAddress(), 
 			readReq.getPort(),
 			image,

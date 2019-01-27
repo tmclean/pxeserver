@@ -9,8 +9,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.annotation.PostConstruct;
+
+import org.springframework.stereotype.Component;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+@Component
 public class ImageRepositoryImpl implements ImageRepository {
 
 	private final List<Image> images = new ArrayList<>();
@@ -20,7 +25,12 @@ public class ImageRepositoryImpl implements ImageRepository {
 	
 	private Image rootImage;
 	
-	public ImageRepositoryImpl() throws IOException {
+	public ImageRepositoryImpl() {
+
+	}
+	
+	@PostConstruct
+	public void init() throws IOException {
 		String jsonDbFile = System.getProperty( "pxeserver.jsonDb" );
 		byte[] jsonData = Files.readAllBytes( Paths.get( jsonDbFile ) );
 		ObjectMapper mapper = new ObjectMapper();

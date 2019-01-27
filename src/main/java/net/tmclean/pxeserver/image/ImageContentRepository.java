@@ -5,7 +5,8 @@ import java.util.List;
 
 public interface ImageContentRepository {
 
-	void initImage( Image image ) throws IOException;
+	void init() throws IOException;
+	void destroy() throws IOException;
 
 	default boolean isImageRootId( long id ) throws IOException {
     	return (id & 0x00ffffffL) == 0;
@@ -15,22 +16,21 @@ public interface ImageContentRepository {
     	return id & 0xff000000L;
     }
 
-	long getImageFileSize( Image image, String filePath ) throws IOException;
+	long getFileSize( String filePath ) throws IOException;
 	
-	boolean imageFilePathExists( Image image, String filePath ) throws IOException;
+	boolean filePathExists( String filePath ) throws IOException;
 	
-	ImageFileEntry getFileEntry( Image image, String filePath ) throws IOException;
+	ImageFileEntry getFileEntry( String filePath ) throws IOException;
 
-	long filePathToId( Image image, String filePath ) throws IOException;
-	String idToFilePath( Image image, long id ) throws IOException;
+	long filePathToId( String filePath ) throws IOException;
+	String idToFilePath( long id ) throws IOException;
 
-	List<String> listImagePath( Image image, String filePath ) throws IOException;
+	List<String> listPath( String filePath ) throws IOException;
 	
-	default int readImageFile( Image image, String filePath, byte[] data ) throws IOException {
-		return readImageFile( image, filePath, data, 0, data.length );
+	default int readImageFile( String filePath, byte[] data ) throws IOException {
+		return readFile( filePath, data, 0, data.length );
 	}
 	
-	int readImageFile( Image image, String filePath, byte[] data, int offset, int length ) throws IOException;
+	int readFile( String filePath, byte[] data, int offset, int length ) throws IOException;
 	
-	void destroy();
 }
