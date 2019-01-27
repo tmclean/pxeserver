@@ -62,6 +62,9 @@ public class ImageRepositoryImpl implements ImageRepository {
 	
 	@Override
 	public Image getImage( String name ) {
+		if( "/".equals( name ) || name.trim().isEmpty() ) {
+			return rootImage;
+		}
 		return this.nameToImageMap.get( name );
 	}
 	

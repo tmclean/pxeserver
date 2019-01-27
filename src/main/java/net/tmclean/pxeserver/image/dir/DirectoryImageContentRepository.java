@@ -131,13 +131,16 @@ public class DirectoryImageContentRepository implements ImageContentRepository {
 		 
 		return result
 			.stream()
-			.filter( p -> matchesPrefix( p, filePath ) )
+			.filter( p -> {
+				System.out.println( "      Checking prefix " + p );
+				return matchesPrefix( p, filePath );
+			})
 			.collect( Collectors.toList() );
 	}
 
 	
 	private boolean matchesPrefix( String actualPath, String prefix ) {
-		if( prefix != null && "/".equals( prefix ) ) {
+		if( "/".equals( prefix ) ) {
 			prefix = "";
 		}
 		

@@ -70,10 +70,20 @@ public class IsoVfs implements VirtualFileSystem {
         System.out.println( "Listing dir children for inode " + String.format( "%016x", inodeNumber ) );
         
         if( inodeNumber == ROOT_INODE ) {    
+        	
         	for( Image image : this.imageRepository.getAllImages() ) {
-    			if( cookie++ > l ) {
-    		        list.add( imageNameToDirEntry( image.getName(), inodeNumber, cookie ) );
-    			}
+        		if( image.isRoot() ) {
+                    for( String p : this.contentDirectory.listImagePath( image, "/" ) ) {
+            			if( cookie++ > l ) {
+            		        list.add( imagePathToDirEntry( p, inodeNumber, cookie ) );
+            			}
+                    }
+        		}
+        		else {
+	    			if( cookie++ > l ) {
+	    		        list.add( imageNameToDirEntry( image.getName(), inodeNumber, cookie ) );
+	    			}
+        		}
         	}
         }
         else {
@@ -98,9 +108,10 @@ public class IsoVfs implements VirtualFileSystem {
             System.out.println( "Getting path " + filePath + " for image named " + image.getName() );
             
             for( String p : this.contentDirectory.listImagePath( image, filePath ) ) {
+            	System.out.println( "   Found path " + p + " under dir " + filePath + " in image " + image.getName() );
     			cookie++;
     			if( cookie > l ) {
-    		        list.add( imagePathToDirEntry( image.getName() + "/" + p, inodeNumber, cookie ) );
+    		        list.add( imagePathToDirEntry( (image.isRoot() ? "" : image.getName()) + "/" + p, inodeNumber, cookie ) );
     			}
             }
         }
@@ -220,8 +231,8 @@ public class IsoVfs implements VirtualFileSystem {
         
     	if( inodeNumber == ROOT_INODE ||				// Matches root inode constant 
     		path == null || path.trim().isEmpty() || 	// Is null or empty, implying root
-    		"/".equals( path.trim() ) ||  				// Is explicitly the root path
-    		!path.contains( "/" ) 						// The path contains no separators, implying the root of an images
+    		"/".equals( path.trim() )   				// Is explicitly the root path
+    		//!path.contains( "/" ) 						// The path contains no separators, implying the root of an images
     	) {
     		//
     		// This path or inode is a virtual/bogus directory
@@ -233,17 +244,46 @@ public class IsoVfs implements VirtualFileSystem {
             stat.setSize( 0 );
             stat.setGeneration( 0L );
     	}
+    	else if( !path.contains( "/" ) ) {
+    		Image image = getImage( path );
+    		if( image == null ) {
+    			image = getImage( "/" );
+        		ImageFileEntry entry = this.contentDirectory.getFileEntry( image, path );
+        		
+        		System.out.println( path + " is a root " + (entry.isDirectory() ? "dir" : "file ") );
+        		
+                stat.setMode( entry.isDirectory() ? 0x4707 : 0x8707 );
+                stat.setATime( entry.getLastModified() );
+                stat.setCTime( entry.getLastModified() );
+                stat.setMTime( entry.getLastModified() );
+                stat.setSize( entry.getLength() );
+                stat.setGeneration( entry.getLastModified() );
+    		}
+    		else {
+                stat.setMode( Stat.S_IFDIR | 0707 );
+                stat.setATime( 0L );
+                stat.setCTime( 0L );
+                stat.setMTime( 0L );
+                stat.setSize( 0 );
+                stat.setGeneration( 0L );
+    		}
+    	}
     	else {
     		String imageName = path.substring( 0, path.indexOf( '/' ) );
     		String filePath  = path.substring( path.indexOf( "/" )+1 );
 
     		Image image = this.imageRepository.getImage( imageName );
     		
-    		ImageFileEntry entry = this.contentDirectory.getFileEntry( image, filePath );	
-            
-            int type = entry.isDirectory() ? Stat.S_IFDIR : Stat.S_IFREG;
-            
-            stat.setMode( type | 0707 );
+    		ImageFileEntry entry = null;
+    		if( image != null ) {
+    			entry = this.contentDirectory.getFileEntry( image, filePath );	
+    		}
+    		else {
+    			image = getImage( "/" );
+    			entry = this.contentDirectory.getFileEntry( image, filePath );
+    		}
+    		
+            stat.setMode( entry.isDirectory() ? 0x4707 : 0x8707 );
             stat.setATime( entry.getLastModified() );
             stat.setCTime( entry.getLastModified() );
             stat.setMTime( entry.getLastModified() );
@@ -276,7 +316,7 @@ public class IsoVfs implements VirtualFileSystem {
     		long imageId = this.contentDirectory.imageFileIdToImageId( inodeNumber );
     		Image image = getImage( imageId );
     		
-	    	String imageName = image.getName();
+	    	String imageName = image.isRoot() ? "" : image.getName();
 	    	String filePath  = this.contentDirectory.idToFilePath( image, inodeNumber );
     	
 	    	return imageName + "/" + filePath;
@@ -298,7 +338,8 @@ public class IsoVfs implements VirtualFileSystem {
 			return image;
 		}
 
-		throw new NoEntException( "Failed to locate image with name " + name );
+		return null;
+//		throw new NoEntException( "Failed to locate image with name " + name );
     }
     
     private long resolvePath( String path ) throws IOException {
@@ -307,22 +348,44 @@ public class IsoVfs implements VirtualFileSystem {
 
 		try {	
 	    	if( "".equals( path ) || "/".equals( path ) ) {
+	    		System.out.println( "The path " + path + " is the root path" );
 	    		return ROOT_INODE;
 	    	}
 	    	else if( !path.contains( "/" ) ) {
-	    		return getImage( path ).getId();
+	    		System.out.println( "The path " + path + " may be an image name" );
+	    		Image image = getImage( path );
+	    		
+	    		if( image != null ) {
+		    		System.out.println( "   The path " + path + " is an image name" );
+		    		return getImage( path ).getId(); 
+	    		}
+	    		else {
+		    		System.out.println( "   The path " + path + " is probably a child of the root image" );
+	    			image = getImage( "/" );
+	    			return this.contentDirectory.filePathToId( image, path );
+	    		}
 	    	}
 	    	else {
+	    		System.out.println( "The path " + path + " is complicated and may be either a child of a root or non-root image" );
+	    		
 				String imageName = path.substring( 0, path.indexOf( '/' ) );
 				String filePath  = path.substring( path.indexOf( "/" )+1 );
 				
+				System.out.println( "resolvePath :: Image Name " + imageName );
+				
 				Image image = this.imageRepository.getImage( imageName );
 				
-				return this.contentDirectory.filePathToId( image, filePath );
+				if( image != null ) {
+					return this.contentDirectory.filePathToId( image, filePath );
+				}
+				else {
+	    			image = getImage( "/" );
+	    			return this.contentDirectory.filePathToId( image, path );
+				}
 	    	}
     	}
 		catch( IOException e ) {
-			throw new NoEntException( "Failed to resolve path " + path );
+			throw new NoEntException( "Failed to resolve path " + path, e );
 		}
     }
 
