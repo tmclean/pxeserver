@@ -27,7 +27,7 @@ import net.tmclean.pxeserver.image.ImageRepository;
 import net.tmclean.pxeserver.image.aggregate.ImageContentDirectory;
 
 @Component
-public class IsoVfs implements VirtualFileSystem {
+public class ImageVfs implements VirtualFileSystem {
 
 	private static final long ROOT_INODE = 1L;
 	
@@ -36,7 +36,7 @@ public class IsoVfs implements VirtualFileSystem {
     private final ImageRepository imageRepository;
     private final ImageContentDirectory contentDirectory;
     
-    public IsoVfs( ImageRepository imageRepository, ImageContentDirectory contentDirectory ) {
+    public ImageVfs( ImageRepository imageRepository, ImageContentDirectory contentDirectory ) {
     	this.imageRepository = imageRepository;
     	this.contentDirectory = contentDirectory;
 	}

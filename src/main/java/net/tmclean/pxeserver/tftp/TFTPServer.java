@@ -12,10 +12,10 @@ import org.apache.commons.net.tftp.TFTPPacketException;
 import org.apache.commons.net.tftp.TFTPReadRequestPacket;
 import org.springframework.stereotype.Service;
 
-import net.tmclean.pxeserver.DaemonService;
 import net.tmclean.pxeserver.image.Image;
 import net.tmclean.pxeserver.image.ImageRepository;
 import net.tmclean.pxeserver.image.aggregate.ImageContentDirectory;
+import net.tmclean.pxeserver.util.DaemonService;
 
 @Service
 public class TFTPServer extends DaemonService {

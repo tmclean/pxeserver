@@ -16,9 +16,9 @@ import org.dcache.oncrpc4j.rpc.OncRpcSvc;
 import org.dcache.oncrpc4j.rpc.OncRpcSvcBuilder;
 import org.springframework.stereotype.Service;
 
-import net.tmclean.pxeserver.DaemonService;
 import net.tmclean.pxeserver.image.Image;
 import net.tmclean.pxeserver.image.ImageRepository;
+import net.tmclean.pxeserver.util.DaemonService;
 
 @Service
 public class NfsService extends DaemonService {
@@ -26,7 +26,7 @@ public class NfsService extends DaemonService {
     private final ImageRepository imageRepository;
     private final VirtualFileSystem vfs;
     
-	public NfsService( ImageRepository imageRepository, IsoVfs vfs ) {
+	public NfsService( ImageRepository imageRepository, ImageVfs vfs ) {
     	this.imageRepository = imageRepository;
     	this.vfs = vfs;
 	}
@@ -64,7 +64,7 @@ public class NfsService extends DaemonService {
 				.build();
 
         NfsServerV3 nfs3 = new NfsServerV3( exportFile, vfs );
-        IsoMountServer mountd = new IsoMountServer( exportFile, vfs );
+        ImageMountServer mountd = new ImageMountServer( exportFile, vfs );
 
         nfsSvc.register( new OncRpcProgram( mount_prot.MOUNT_PROGRAM, mount_prot.MOUNT_V3 ), mountd );
         nfsSvc.register( new OncRpcProgram( nfs3_prot.NFS_PROGRAM,    nfs3_prot.NFS_V3    ), nfs3   );

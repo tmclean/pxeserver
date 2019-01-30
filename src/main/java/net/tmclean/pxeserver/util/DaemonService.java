@@ -1,4 +1,4 @@
-package net.tmclean.pxeserver;
+package net.tmclean.pxeserver.util;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
